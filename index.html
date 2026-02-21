@@ -286,9 +286,9 @@
 
 <div class="header">
   <div class="kicker">Wild Crowns · AI & Water Series</div>
-  <h1>Your cloud drained my river</h1>
+  <h1><a href="https://wildcrowns.substack.com/p/your-cloud-drained-my-river" target="_blank" style="color:#fff;text-decoration:none;border-bottom:2px solid #e85d3a;padding-bottom:2px;transition:opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">Your cloud drained my river</a></h1>
   <div class="subtitle">113 major AI data centre projects worldwide, mapped against water stress.
-  Two-thirds of capacity is being built in areas of high or extreme water stress.</div>
+  Two-thirds of capacity is being built in areas of high or extreme water stress. <a href="https://wildcrowns.substack.com/p/your-cloud-drained-my-river" target="_blank" style="color:#e85d3a;text-decoration:none;font-weight:500;">Read the full article →</a></div>
 </div>
 
 <div class="stats-bar">
@@ -302,7 +302,7 @@
   </div>
   <div class="stat">
     <div class="number"><span class="highlight" id="stat-pct">66%</span></div>
-    <div class="label">In high water stress areas</div>
+    <div class="label">In water-stressed areas</div>
   </div>
   <div class="stat">
     <div class="number" id="stat-water">—</div>
@@ -313,6 +313,7 @@
 <div class="controls">
   <label>Filter:</label>
   <button class="filter-btn active" data-filter="all">All projects</button>
+  <button class="filter-btn" data-filter="us-only">US only</button>
   <button class="filter-btn" data-filter="high-stress">High stress (4-5)</button>
   <button class="filter-btn" data-filter="evaporative">Evaporative cooling</button>
   <button class="filter-btn" data-filter="water-free">Water-free/reduced</button>
@@ -350,8 +351,8 @@ const STRESS_LABELS = {
 
 // Initialize map
 const map = L.map('map', {
-  center: [25, 10],
-  zoom: 2.5,
+  center: [35, -95],
+  zoom: 4,
   minZoom: 2,
   maxZoom: 12,
   zoomControl: true,
@@ -442,15 +443,14 @@ function updateStats(markers) {
   const visible = markers.filter(m => map.hasLayer(m));
   const n = visible.length;
   const totalMW = visible.reduce((s, m) => s + (m._data.mw || 0), 0);
-  const highStress = visible.filter(m => (m._data.stress_score || 0) >= 4);
-  const highMW = highStress.reduce((s, m) => s + (m._data.mw || 0), 0);
-  const pct = totalMW > 0 ? Math.round((highMW / totalMW) * 100) : 0;
+  const highStress = visible.filter(m => (m._data.stress_score || 0) >= 3);
+  const pct = n > 0 ? Math.round((highStress.length / n) * 100) : 0;
   const totalWater = visible.reduce((s, m) => s + (m._data.total_water || 0), 0);
 
   document.getElementById('stat-projects').textContent = n;
   document.getElementById('stat-gw').textContent = (totalMW / 1000).toFixed(0) + ' GW';
   document.getElementById('stat-pct').textContent = pct + '%';
-  document.getElementById('stat-water').textContent = (totalWater / 1000000).toFixed(0) + 'T';
+  document.getElementById('stat-water').textContent = totalWater > 0 ? (totalWater / 1000000).toFixed(1) + 'B' : '—';
 }
 
 updateStats(allMarkers);
@@ -459,7 +459,10 @@ updateStats(allMarkers);
 const filterBtns = document.querySelectorAll('.filter-btn');
 filterBtns.forEach(btn => {
   btn.addEventListener('click', () => {
-    filterBtns.forEach(b => b.classList.remove('active'));
+    filterBtns.forEach(b => {
+      b.classList.remove('active');
+      b.textContent = b.textContent.replace(/ · \d+$/, '');
+    });
     btn.classList.add('active');
     const filter = btn.dataset.filter;
 
@@ -467,7 +470,15 @@ filterBtns.forEach(btn => {
       const p = m._data;
       let show = true;
 
-      if (filter === 'high-stress') {
+      if (filter === 'us-only') {
+        const r = (p.region || '').toUpperCase();
+        const s = (p.state || '').toLowerCase();
+        show = r === 'TX' || r === 'AZ' || r === 'VA' || r === 'US OTHER' || 
+               s.includes('texas') || s.includes('arizona') || s.includes('virginia') ||
+               s.includes('ohio') || s.includes('indiana') || s.includes('wisconsin') ||
+               s.includes('pennsylvania') || s.includes('north carolina') || 
+               s.includes('mississippi') || s.includes('louisiana') || s.includes('multiple');
+      } else if (filter === 'high-stress') {
         show = (p.stress_score || 0) >= 4;
       } else if (filter === 'evaporative') {
         const c = (p.cooling || '').toLowerCase();
@@ -488,6 +499,17 @@ filterBtns.forEach(btn => {
     });
 
     updateStats(allMarkers);
+
+    // Update active button with count
+    const visibleCount = allMarkers.filter(m => map.hasLayer(m)).length;
+    btn.textContent = btn.textContent.replace(/ · \d+$/, '') + (filter !== 'all' ? ' · ' + visibleCount : '');
+
+    // Auto-zoom to US when US filter selected, back to world for All
+    if (filter === 'us-only') {
+      map.flyTo([35, -95], 4, { duration: 0.8 });
+    } else if (filter === 'all') {
+      map.flyTo([25, 10], 2.5, { duration: 0.8 });
+    }
   });
 });
 
