@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>US AI Data Centre Buildout | Wild Crowns</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,700;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'DM Mono', monospace; background: #0a0a0a; color: #e8e4dc; overflow: hidden; height: 100vh; }
+
+.header {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  background: rgba(10,10,10,0.95); border-bottom: 1px solid #2a2a2a;
+  backdrop-filter: blur(8px); height: 52px;
+}
+.header-inner {
+  padding: 8px 20px;
+  display: flex; align-items: center; justify-content: space-between; height: 100%;
+}
+.header-title {
+  font-family: 'Source Serif 4', serif;
+  font-size: 17px; font-weight: 700; letter-spacing: -0.02em;
+}
+.header-title a { color: #e8e4dc; text-decoration: none; }
+.header-title a:hover { color: #f4a261; }
+.header-sub {
+  font-size: 10px; color: #777; margin-top: 1px;
+  font-family: 'DM Mono', monospace;
+}
+.header-sub a { color: #999; text-decoration: underline; text-decoration-color: #555; }
+.header-sub a:hover { color: #f4a261; }
+
+.stats-bar {
+  position: fixed; top: 52px; left: 0; right: 0; z-index: 999;
+  background: rgba(10,10,10,0.92); border-bottom: 1px solid #1a1a1a;
+  backdrop-filter: blur(8px);
+  display: flex; justify-content: center; gap: 0; padding: 0; height: 48px;
+}
+.stat-item {
+  padding: 6px 20px; border-right: 1px solid #1a1a1a;
+  text-align: center; min-width: 110px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.stat-item:last-child { border-right: none; }
+.stat-value {
+  font-size: 20px; font-weight: 500; color: #f4a261;
+  font-family: 'DM Mono', monospace; letter-spacing: -0.02em; line-height: 1.2;
+}
+.stat-value.stress { color: #e76f51; }
+.stat-value.gas { color: #e9c46a; }
+.stat-label {
+  font-size: 8px; color: #666; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 1px;
+}
+
+.controls-row {
+  position: fixed; top: 100px; left: 0; right: 0; z-index: 998;
+  padding: 8px 20px; pointer-events: none;
+}
+.controls-row > * { pointer-events: auto; }
+.controls-stack { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+
+.filters { display: flex; gap: 5px; flex-wrap: wrap; }
+.filter-btn {
+  background: rgba(20,20,20,0.9); border: 1px solid #333;
+  color: #aaa; font-family: 'DM Mono', monospace; font-size: 11px;
+  padding: 4px 10px; cursor: pointer; transition: all 0.2s; border-radius: 2px;
+}
+.filter-btn:hover { border-color: #f4a261; color: #f4a261; }
+.filter-btn.active { background: #f4a261; color: #0a0a0a; border-color: #f4a261; font-weight: 500; }
+.state-accent-tx { border-left: 3px solid #e76f51; }
+.state-accent-tx.active { background: #e76f51; border-color: #e76f51; }
+.state-accent-az { border-left: 3px solid #e9c46a; }
+.state-accent-az.active { background: #e9c46a; border-color: #e9c46a; }
+.state-accent-va { border-left: 3px solid #2a9d8f; }
+.state-accent-va.active { background: #2a9d8f; border-color: #2a9d8f; }
+.filter-count { font-size: 9px; opacity: 0.7; margin-left: 4px; }
+
+.view-btn {
+  background: rgba(20,20,20,0.9); border: 1px solid #333;
+  color: #888; font-family: 'DM Mono', monospace; font-size: 11px;
+  padding: 4px 10px; cursor: pointer; transition: all 0.2s; border-radius: 2px;
+}
+.view-btn:hover { color: #ddd; }
+.view-btn.active-rivers { background: rgba(74,144,182,0.3); color: #4a90b6; border-color: #4a90b6; }
+.view-btn.active-stress { background: rgba(231,111,81,0.3); color: #e76f51; border-color: #e76f51; }
+.view-btn.active-both { background: rgba(244,162,97,0.25); color: #f4a261; border-color: #f4a261; }
+
+.legend {
+  position: fixed; bottom: 20px; left: 20px; z-index: 998;
+  background: rgba(10,10,10,0.92); border: 1px solid #2a2a2a;
+  padding: 14px 16px; font-size: 10px;
+  backdrop-filter: blur(8px); max-width: 260px;
+}
+.legend-title {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: #888; margin-bottom: 10px; font-weight: 500;
+}
+.legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: #aaa; }
+.legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.legend-swatch { width: 24px; height: 12px; flex-shrink: 0; border-radius: 2px; }
+.legend-section { margin-top: 12px; padding-top: 10px; border-top: 1px solid #1a1a1a; }
+.legend-icon {
+  width: 14px; height: 14px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 11px;
+}
+
+.state-panel {
+  position: fixed; top: 140px; right: 20px; z-index: 998;
+  background: rgba(10,10,10,0.92); border: 1px solid #2a2a2a;
+  padding: 14px 16px; font-size: 10px; backdrop-filter: blur(8px); width: 220px;
+}
+.state-panel-title {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: #888; margin-bottom: 10px; font-weight: 500;
+}
+.state-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 0; border-bottom: 1px solid #151515; cursor: pointer; transition: color 0.2s;
+}
+.state-row:hover { color: #f4a261; }
+.state-row:last-child { border-bottom: none; }
+.state-name { color: #ccc; font-weight: 500; }
+.state-mw { color: #888; }
+
+.state-label-icon { background: none !important; border: none !important; }
+.state-map-label { text-align: center; pointer-events: none; }
+.state-map-name {
+  font-family: 'Source Serif 4', serif; font-size: 15px; font-weight: 700;
+  letter-spacing: 0.2em; text-transform: uppercase; text-shadow: 0 1px 8px rgba(0,0,0,0.6);
+}
+.state-map-sub {
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  color: rgba(232,228,220,0.18); letter-spacing: 0.05em; margin-top: 1px;
+}
+
+.hydro-tiles {
+  filter: invert(1) hue-rotate(180deg) saturate(1.8) brightness(0.45) contrast(1.5);
+  mix-blend-mode: screen;
+}
+
+.leaflet-stressPane-pane { filter: blur(12px) saturate(1.2); }
+#map { position: fixed; top: 100px; left: 0; right: 0; bottom: 0; }
+
+.leaflet-popup-content-wrapper {
+  background: rgba(15,15,15,0.96) !important; color: #e8e4dc !important;
+  border: 1px solid #333 !important; border-radius: 3px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important; backdrop-filter: blur(8px);
+}
+.leaflet-popup-tip { background: rgba(15,15,15,0.96) !important; }
+.leaflet-popup-content {
+  font-family: 'DM Mono', monospace !important; font-size: 11px !important;
+  line-height: 1.6 !important; margin: 12px 14px !important; min-width: 240px;
+}
+.popup-name {
+  font-family: 'Source Serif 4', serif;
+  font-size: 15px; font-weight: 700; margin-bottom: 2px; letter-spacing: -0.02em;
+}
+.popup-owner { color: #888; font-size: 10px; margin-bottom: 10px; }
+.popup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-bottom: 10px; }
+.popup-field-label { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; }
+.popup-field-value { font-size: 12px; color: #ddd; }
+.popup-field-value.stress-high { color: #e76f51; font-weight: 500; }
+.popup-field-value.stress-extreme { color: #d62828; font-weight: 500; }
+.popup-field-value.gas { color: #e9c46a; }
+.popup-water {
+  background: rgba(231,111,81,0.1); border: 1px solid rgba(231,111,81,0.2);
+  padding: 8px 10px; margin-top: 8px; font-size: 10px; color: #ccc;
+}
+.popup-water-value { font-size: 14px; color: #e76f51; font-weight: 500; }
+
+@media (max-width: 768px) {
+  .stats-bar { flex-wrap: wrap; height: auto; }
+  .stat-item { min-width: 80px; padding: 4px 8px; }
+  .stat-value { font-size: 15px; }
+  .state-panel { display: none; }
+  .legend { max-width: 200px; font-size: 9px; }
+  .controls-row { top: 88px; flex-direction: column; gap: 6px; align-items: flex-start; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <div>
+      <div class="header-title"><a href="https://wildcrowns.substack.com/p/your-cloud-drained-my-river" target="_blank">The US AI Data Centre Buildout</a></div>
+      <div class="header-sub">
+        65 projects in buildout phase &middot; 101 GW planned capacity &middot; from <a href="https://wildcrowns.substack.com" target="_blank">Wild Crowns</a> &middot;
+        <a href="https://kristjanlepik-commits.github.io/wildcrowns/" target="_blank">Full global map &rarr;</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="stats-bar">
+  <div class="stat-item"><div class="stat-value">65</div><div class="stat-label">Projects</div></div>
+  <div class="stat-item"><div class="stat-value">101 GW</div><div class="stat-label">Total Capacity</div></div>
+  <div class="stat-item"><div class="stat-value stress">52%</div><div class="stat-label">In High Water Stress</div></div>
+  <div class="stat-item"><div class="stat-value gas">49 GW</div><div class="stat-label">On-site Gas Power</div></div>
+  <div class="stat-item"><div class="stat-value">$765B</div><div class="stat-label">Investment</div></div>
+  <div class="stat-item"><div class="stat-value">84</div><div class="stat-label">Nuclear Reactor Equiv.</div></div>
+</div>
+
+<div class="controls-row">
+  <div class="filters">
+    <button class="filter-btn active" data-filter="all">All<span class="filter-count"></span></button>
+    <button class="filter-btn state-accent-tx" data-filter="TX">Texas<span class="filter-count"></span></button>
+    <button class="filter-btn state-accent-az" data-filter="AZ">Arizona<span class="filter-count"></span></button>
+    <button class="filter-btn state-accent-va" data-filter="VA">Virginia<span class="filter-count"></span></button>
+    <button class="filter-btn" data-filter="other">Other<span class="filter-count"></span></button>
+    <button class="filter-btn" data-filter="gas">&#9733; Gas Powered<span class="filter-count"></span></button>
+    <button class="filter-btn" data-filter="stress4">High Stress<span class="filter-count"></span></button>
+    <button class="filter-btn" data-filter="stress5">Extreme Stress<span class="filter-count"></span></button>
+    <span style="display:inline-block; width:1px; height:22px; background:#444; margin:0 3px; vertical-align:middle;"></span>
+    <button class="view-btn active-rivers" id="viewRivers" title="Show rivers">&#9783; Rivers</button>
+    <button class="view-btn" id="viewStress" title="Show water stress zones">&#9673; Stress</button>
+    <button class="view-btn active-both" id="viewBoth" title="Show both layers">Both</button>
+  </div>
+</div>
+
+<div class="state-panel" id="statePanel">
+  <div class="state-panel-title">By State Cluster</div>
+  <div id="stateRows"></div>
+</div>
+
+<div class="legend" id="legend">
+  <div class="legend-title">Water Stress (WRI Aqueduct 4.0)</div>
+  <div class="legend-row"><div class="legend-swatch" style="background:rgba(42,157,143,0.25); border:1px solid rgba(42,157,143,0.4);"></div> Low (1-2)</div>
+  <div class="legend-row"><div class="legend-swatch" style="background:rgba(233,196,106,0.25); border:1px solid rgba(233,196,106,0.4);"></div> Med-High (3)</div>
+  <div class="legend-row"><div class="legend-swatch" style="background:rgba(244,162,97,0.3); border:1px solid rgba(244,162,97,0.4);"></div> High (4)</div>
+  <div class="legend-row"><div class="legend-swatch" style="background:rgba(231,111,81,0.35); border:1px solid rgba(231,111,81,0.5);"></div> Extreme (5)</div>
+  <div class="legend-section">
+    <div class="legend-title">Data Centre Markers</div>
+    <div class="legend-row"><div class="legend-dot" style="background:#e76f51"></div> Dot color = site stress score</div>
+    <div class="legend-row"><div class="legend-icon">&#9733;</div> On-site gas / BTM power</div>
+    <div class="legend-row"><div class="legend-icon" style="font-size:13px">&#10006;</div> Blocked / defeated</div>
+    <div class="legend-row"><div class="legend-icon" style="font-size:9px">&#9675;</div> Circle size = MW capacity</div>
+  </div>
+  <div class="legend-section">
+    <div style="color:#555; font-size:9px; line-height:1.5;">
+      Stress zones: WRI Aqueduct 4.0 (simplified)<br>
+      Rivers: Esri/USGS NHDPlus<br>
+      Data: Wild Crowns research, 2025
+    </div>
+  </div>
+</div>
+
+<div id="map"></div>
+
+<script>
+const projects = [{"name": "Stargate Expansion (non-Abilene)", "owner": "OpenAI/Oracle/SoftBank", "tenant": "OpenAI", "location": "TX/NM/OH/Midwest", "state": "Multiple", "region": "US Other", "mw": 2500.0, "investment": 129.3, "status": "Planning", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "Mixed", "isGas": false, "stressScore": 3.0, "stressLabel": "Varies", "totalWater": 7358400000.0, "hhEquiv": 17773, "lat": 33.5, "lng": -101.0}, {"name": "Meta Hyperion", "owner": "Meta", "tenant": "Meta", "location": "Richland Parish", "state": "Louisiana", "region": "US Other", "mw": 5000.0, "investment": 10.0, "status": "Under Construction", "statusCat": "construction", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "3 on-site gas plants ($3B) + renewables", "isGas": true, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 30660000000.0, "hhEquiv": 74057, "lat": 32.42, "lng": -91.76}, {"name": "Meta Prometheus", "owner": "Meta", "tenant": "Meta", "location": "New Albany", "state": "Ohio", "region": "US Other", "mw": 1000.0, "investment": null, "status": "Under Construction", "statusCat": "construction", "cooling": "Standard", "coolCat": "evaporative", "power": "200MW on-site gas + grid", "isGas": true, "stressScore": 2.0, "stressLabel": "Low-Medium", "totalWater": 4599000000.0, "hhEquiv": 11108, "lat": 40.08, "lng": -82.81}, {"name": "Amazon PA Campus", "owner": "Amazon (AWS)", "tenant": "AWS", "location": "Salem/Falls Township", "state": "Pennsylvania", "region": "US Other", "mw": 1000.0, "investment": 20.0, "status": "Under Construction", "statusCat": "construction", "cooling": "TBD", "coolCat": "unknown", "power": "Susquehanna nuclear + grid", "isGas": false, "stressScore": 2.0, "stressLabel": "Low-Medium", "totalWater": 2943360000.0, "hhEquiv": 7109, "lat": 40.23, "lng": -74.98}, {"name": "Amazon Project Rainier", "owner": "Amazon (AWS)", "tenant": "AWS/Anthropic", "location": "Indiana", "state": "Indiana", "region": "US Other", "mw": 600.0, "investment": 8.0, "status": "Operational", "statusCat": "operational", "cooling": "Standard", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 2.0, "stressLabel": "Low-Medium", "totalWater": 2759400000.0, "hhEquiv": 6665, "lat": 39.77, "lng": -86.16}, {"name": "Vantage Lighthouse", "owner": "Vantage/OpenAI/Oracle", "tenant": "OpenAI", "location": "Port Washington", "state": "Wisconsin", "region": "US Other", "mw": 902.0, "investment": 15.0, "status": "Early Construction", "statusCat": "construction", "cooling": "TBD", "coolCat": "unknown", "power": "Grid", "isGas": false, "stressScore": 1.0, "stressLabel": "Low", "totalWater": 2654910720.0, "hhEquiv": 6412, "lat": 43.39, "lng": -87.88}, {"name": "Microsoft Mt Pleasant", "owner": "Microsoft", "tenant": "Microsoft", "location": "Mount Pleasant", "state": "Wisconsin", "region": "US Other", "mw": 300.0, "investment": 7.0, "status": "Under Construction", "statusCat": "construction", "cooling": "Closed-loop (zero water)", "coolCat": "closed-loop", "power": "WE Energies grid", "isGas": false, "stressScore": 1.0, "stressLabel": "Low", "totalWater": 283015384.61538464, "hhEquiv": 683, "lat": 42.72, "lng": -87.88}, {"name": "ESS NC Campus", "owner": "Energy Storage Solutions", "tenant": "TBD", "location": "Rocky Mount", "state": "North Carolina", "region": "US Other", "mw": 900.0, "investment": 19.2, "status": "Approved", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "TBD + battery storage", "isGas": false, "stressScore": 2.0, "stressLabel": "Low-Medium", "totalWater": 2649024000.0, "hhEquiv": 6398, "lat": 35.94, "lng": -77.79}, {"name": "Compass Meridian", "owner": "Compass Datacenters", "tenant": "TBD", "location": "Lauderdale County", "state": "Mississippi", "region": "US Other", "mw": 320.0, "investment": 10.0, "status": "Planning", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "Mississippi Power 500MW", "isGas": false, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 941875200.0, "hhEquiv": 2275, "lat": 32.4, "lng": -88.67}, {"name": "NextEra/Google Campuses", "owner": "NextEra/Google", "tenant": "Google", "location": "Multiple", "state": "Multiple", "region": "US Other", "mw": 3000.0, "investment": null, "status": "Planning", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "Nuclear + gas + solar", "isGas": true, "stressScore": 3.0, "stressLabel": "Varies", "totalWater": 8830080000.0, "hhEquiv": 21328, "lat": 37.0, "lng": -95.0}, {"name": "NextEra/Exxon Campus", "owner": "NextEra/ExxonMobil", "tenant": "TBD", "location": "Southeast", "state": "Southeast", "region": "US Other", "mw": 1000.0, "investment": null, "status": "MOU stage", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "On-site gas + CCS", "isGas": true, "stressScore": 3.0, "stressLabel": "Varies", "totalWater": 2943360000.0, "hhEquiv": 7109, "lat": 33.75, "lng": -84.39}, {"name": "Meta Indiana Expansion", "owner": "Meta", "tenant": "Meta", "location": "Indiana", "state": "Indiana", "region": "US Other", "mw": 2000.0, "investment": null, "status": "Planning", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "Nuclear PPAs + renewables", "isGas": false, "stressScore": 2.0, "stressLabel": "Low-Medium", "totalWater": 5886720000.0, "hhEquiv": 14219, "lat": 39.77, "lng": -86.16}, {"name": "CleanArc Caroline County", "owner": "CleanArc", "tenant": "TBD", "location": "Caroline County", "state": "Virginia", "region": "VA", "mw": 900.0, "investment": null, "status": "Under Construction", "statusCat": "construction", "cooling": "TBD", "coolCat": "unknown", "power": "Grid", "isGas": false, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 2649024000.0, "hhEquiv": 6398, "lat": 38.03, "lng": -77.35}, {"name": "Vantage Frontier", "owner": "Vantage Data Centers", "tenant": "TBD", "location": "Shackelford County", "state": "Texas", "region": "TX", "mw": 1400.0, "investment": 25.0, "status": "Under Construction", "statusCat": "construction", "cooling": "Closed-loop chiller", "coolCat": "closed-loop", "power": "Behind-meter + grid", "isGas": true, "stressScore": 4.0, "stressLabel": "High", "totalWater": 1981107692.3076925, "hhEquiv": 4785, "lat": 32.74, "lng": -99.35}, {"name": "Data City Texas", "owner": "Data City Texas", "tenant": "TBD", "location": "Near Laredo", "state": "Texas", "region": "TX", "mw": 5000.0, "investment": null, "status": "Planning", "statusCat": "planned", "cooling": "Direct-to-chip liquid", "coolCat": "closed-loop", "power": "100% renewable (wind/solar/battery/H2)", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 7075384615.384615, "hhEquiv": 17090, "lat": 27.61, "lng": -99.51}, {"name": "HyperGrid/Matador", "owner": "Fermi America/Texas Tech Univ.", "tenant": "TBD", "location": "Amarillo", "state": "Texas", "region": "TX", "mw": 11000.0, "investment": 300.0, "status": "NRC filing made", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "4\u00d71GW nuclear + gas + solar/wind", "isGas": true, "stressScore": 4.0, "stressLabel": "High", "totalWater": 43169280000.0, "hhEquiv": 104273, "lat": 35.22, "lng": -101.83}, {"name": "Tract Caldwell County", "owner": "Tract", "tenant": "TBD", "location": "Between Austin & SA", "state": "Texas", "region": "TX", "mw": 2000.0, "investment": null, "status": "Planning", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "Grid (ERCOT)", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 7848960000.0, "hhEquiv": 18958, "lat": 30.3, "lng": -97.8}, {"name": "DFW Metroplex Campus", "owner": "Multiple", "tenant": "Multiple", "location": "DFW", "state": "Texas", "region": "TX", "mw": 1800.0, "investment": null, "status": "Under Construction", "statusCat": "construction", "cooling": "Standard", "coolCat": "evaporative", "power": "Grid (ERCOT)", "isGas": false, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 11037600000.0, "hhEquiv": 26660, "lat": 32.9, "lng": -97.04}, {"name": "Meta El Paso", "owner": "Meta", "tenant": "Meta", "location": "El Paso", "state": "Texas", "region": "TX", "mw": 1000.0, "investment": 1.5, "status": "Planning", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "TBD", "isGas": false, "stressScore": 5.0, "stressLabel": "Extremely High", "totalWater": 3924480000.0, "hhEquiv": 9479, "lat": 31.76, "lng": -106.44}, {"name": "Google TX (3 sites)", "owner": "Google", "tenant": "Google", "location": "Multiple TX", "state": "Texas", "region": "TX", "mw": 1200.0, "investment": 40.0, "status": "Various", "statusCat": "planned", "cooling": "Mixed", "coolCat": "unknown", "power": "Grid + renewables", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 4709376000.0, "hhEquiv": 11375, "lat": 31.5, "lng": -99.5}, {"name": "Streams San Antonio", "owner": "Streams DC", "tenant": "TBD", "location": "San Antonio", "state": "Texas", "region": "TX", "mw": 200.0, "investment": null, "status": "Planning", "statusCat": "planned", "cooling": "Standard", "coolCat": "evaporative", "power": "Grid (CPS Energy)", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 1533000000.0000002, "hhEquiv": 3702, "lat": 29.42, "lng": -98.49}, {"name": "Sulphur Springs Cluster", "owner": "Multiple", "tenant": "Multiple", "location": "Sulphur Springs", "state": "Texas", "region": "TX", "mw": 600.0, "investment": null, "status": "Planning", "statusCat": "planned", "cooling": "Standard", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 3679200000.0, "hhEquiv": 8886, "lat": 33.14, "lng": -95.6}, {"name": "Permian Basin Cluster", "owner": "Multiple", "tenant": "Multiple", "location": "Permian Basin", "state": "Texas", "region": "TX", "mw": 500.0, "investment": null, "status": "Various", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "Behind-meter gas + grid", "isGas": true, "stressScore": 5.0, "stressLabel": "Extremely High", "totalWater": 1962240000.0, "hhEquiv": 4739, "lat": 31.9, "lng": -102.2}, {"name": "Advanced Energy Campus TX", "owner": "Various", "tenant": "TBD", "location": "Texas", "state": "Texas", "region": "TX", "mw": 400.0, "investment": null, "status": "Planning", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "Grid", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 1569792000.0, "hhEquiv": 3791, "lat": 31.0, "lng": -100.0}, {"name": "Loudoun County Pipeline", "owner": "Multiple", "tenant": "Multiple", "location": "Loudoun County", "state": "Virginia", "region": "VA", "mw": 5330.0, "investment": null, "status": "Various", "statusCat": "planned", "cooling": "Mixed", "coolCat": "unknown", "power": "Dominion grid", "isGas": false, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 15688108800.0, "hhEquiv": 37893, "lat": 39.08, "lng": -77.64}, {"name": "Prince William Pipeline", "owner": "Multiple", "tenant": "Multiple", "location": "Prince William County", "state": "Virginia", "region": "VA", "mw": 3000.0, "investment": null, "status": "Various", "statusCat": "planned", "cooling": "Mixed", "coolCat": "unknown", "power": "Dominion grid", "isGas": false, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 8830080000.0, "hhEquiv": 21328, "lat": 38.7, "lng": -77.48}, {"name": "Vantage Fredericksburg", "owner": "Vantage", "tenant": "TBD", "location": "Fredericksburg", "state": "Virginia", "region": "VA", "mw": 192.0, "investment": 2.0, "status": "Under Construction", "statusCat": "construction", "cooling": "TBD", "coolCat": "unknown", "power": "Grid", "isGas": false, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 565125119.9999999, "hhEquiv": 1365, "lat": 38.3, "lng": -77.46}, {"name": "Google Virginia Expansion", "owner": "Google", "tenant": "Google", "location": "Multiple VA counties", "state": "Virginia", "region": "VA", "mw": 500.0, "investment": 9.0, "status": "Under Construction", "statusCat": "construction", "cooling": "Mixed", "coolCat": "unknown", "power": "Grid (PJM)", "isGas": false, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 1471680000.0, "hhEquiv": 3554, "lat": 38.2, "lng": -77.8}, {"name": "Tract Richmond VA", "owner": "Tract", "tenant": "TBD", "location": "Richmond area", "state": "Virginia", "region": "VA", "mw": 2400.0, "investment": null, "status": "Planning", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "Grid (PJM)", "isGas": false, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 7064064000.0, "hhEquiv": 17062, "lat": 37.54, "lng": -77.43}, {"name": "Balico Pittsylvania", "owner": "Balico Tech", "tenant": "TBD", "location": "Pittsylvania County", "state": "Virginia", "region": "VA", "mw": 3500.0, "investment": null, "status": "Defeated", "statusCat": "blocked", "cooling": "TBD", "coolCat": "unknown", "power": "3.5 GW gas plant (Mountain Valley Pipeline)", "isGas": true, "stressScore": 2.0, "stressLabel": "Low-Medium", "totalWater": 10301759999.999998, "hhEquiv": 24883, "lat": 36.82, "lng": -79.39}, {"name": "Culpeper Expansion", "owner": "Multiple", "tenant": "Multiple", "location": "Culpeper County", "state": "Virginia", "region": "VA", "mw": 500.0, "investment": null, "status": "Planning", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "Grid", "isGas": false, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 1471680000.0, "hhEquiv": 3554, "lat": 38.47, "lng": -78.0}, {"name": "Vermaland La Osa", "owner": "Vermaland", "tenant": "TBD", "location": "Pinal County", "state": "Arizona", "region": "AZ", "mw": 3000.0, "investment": 33.0, "status": "Planning", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "Solar/gas/battery", "isGas": true, "stressScore": 5.0, "stressLabel": "Extremely High", "totalWater": 11773440000.0, "hhEquiv": 28438, "lat": 32.75, "lng": -111.4}, {"name": "Tract Buckeye Tech Park", "owner": "Tract", "tenant": "TBD", "location": "Buckeye", "state": "Arizona", "region": "AZ", "mw": 2000.0, "investment": null, "status": "Planning", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "Grid (APS)", "isGas": false, "stressScore": 5.0, "stressLabel": "Extremely High", "totalWater": 7848960000.0, "hhEquiv": 18958, "lat": 33.37, "lng": -112.58}, {"name": "Google Mesa Phase 1", "owner": "Google", "tenant": "Google", "location": "Mesa", "state": "Arizona", "region": "AZ", "mw": 400.0, "investment": null, "status": "Operational", "statusCat": "operational", "cooling": "Air cooling planned", "coolCat": "closed-loop", "power": "Grid (SRP)", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 566030769.2307692, "hhEquiv": 1367, "lat": 33.42, "lng": -111.83}, {"name": "Google Mesa Phase 2", "owner": "Google", "tenant": "Google", "location": "Mesa", "state": "Arizona", "region": "AZ", "mw": 400.0, "investment": null, "status": "Planning", "statusCat": "planned", "cooling": "Air cooling", "coolCat": "closed-loop", "power": "Grid (SRP)", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 566030769.2307692, "hhEquiv": 1367, "lat": 33.42, "lng": -111.83}, {"name": "EdgeCore Mesa", "owner": "EdgeCore", "tenant": "TBD", "location": "Mesa", "state": "Arizona", "region": "AZ", "mw": 450.0, "investment": null, "status": "Partially Operational", "statusCat": "operational", "cooling": "Standard", "coolCat": "evaporative", "power": "Grid (SRP)", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 3449250000.0, "hhEquiv": 8331, "lat": 33.42, "lng": -111.83}, {"name": "Aligned Glendale PHX-13", "owner": "Aligned", "tenant": "TBD", "location": "Glendale", "state": "Arizona", "region": "AZ", "mw": 72.0, "investment": null, "status": "Under Construction", "statusCat": "construction", "cooling": "Delta\u00b3 air cooling + closed-loop", "coolCat": "closed-loop", "power": "Grid", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 101885538.46153845, "hhEquiv": 246, "lat": 33.54, "lng": -112.19}, {"name": "NTT Mesa", "owner": "NTT", "tenant": "TBD", "location": "Mesa", "state": "Arizona", "region": "AZ", "mw": 600.0, "investment": null, "status": "Planning", "statusCat": "planned", "cooling": "TBD", "coolCat": "unknown", "power": "Grid", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 2354688000.0, "hhEquiv": 5687, "lat": 33.42, "lng": -111.83}, {"name": "Project Blue Tucson", "owner": "TBD", "tenant": "TBD", "location": "Pima County", "state": "Arizona", "region": "AZ", "mw": 300.0, "investment": 1.0, "status": "Approved", "statusCat": "planned", "cooling": "Standard", "coolCat": "evaporative", "power": "Grid (TEP)", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 2299500000.0, "hhEquiv": 5554, "lat": 32.1, "lng": -111.79}, {"name": "Microsoft Goodyear", "owner": "Microsoft", "tenant": "Microsoft", "location": "Goodyear", "state": "Arizona", "region": "AZ", "mw": 200.0, "investment": null, "status": "Operational", "statusCat": "operational", "cooling": "Standard (zero-water pilot 2026)", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 1533000000.0000002, "hhEquiv": 3702, "lat": 33.44, "lng": -112.36}, {"name": "Meta Goodyear", "owner": "Meta", "tenant": "Meta", "location": "Goodyear", "state": "Arizona", "region": "AZ", "mw": 200.0, "investment": null, "status": "Operational", "statusCat": "operational", "cooling": "Standard", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 1533000000.0000002, "hhEquiv": 3702, "lat": 33.44, "lng": -112.36}, {"name": "Novva Borealis Mesa", "owner": "Novva", "tenant": "TBD", "location": "Mesa", "state": "Arizona", "region": "AZ", "mw": 300.0, "investment": null, "status": "Under Construction", "statusCat": "construction", "cooling": "TBD", "coolCat": "unknown", "power": "Grid (SRP)", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 1177344000.0, "hhEquiv": 2843, "lat": 33.42, "lng": -111.83}, {"name": "GW Ranch", "owner": "Pacifico Energy", "tenant": null, "location": "Pecos County", "state": "TX", "region": "TX", "mw": 7650.0, "investment": null, "status": "Planned", "statusCat": "planned", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Gas/behind-the-meter", "isGas": true, "stressScore": 5.0, "stressLabel": "Extremely High", "totalWater": 70364700000.0, "hhEquiv": 169963, "lat": 30.99, "lng": -102.69}, {"name": "Sailfish Comanche Circle", "owner": "Sailfish Digital Ventures", "tenant": null, "location": "Tolar, Hood County", "state": "TX", "region": "TX", "mw": 3200.0, "investment": null, "status": "Planned", "statusCat": "planned", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "1.2 GW gas plant on-site", "isGas": true, "stressScore": 4.0, "stressLabel": "High", "totalWater": 24528000000.000004, "hhEquiv": 59246, "lat": 32.39, "lng": -97.92}, {"name": "San Marcos DC I", "owner": "CloudBurst/Evolve", "tenant": null, "location": "New Braunfels, Guadalupe", "state": "TX", "region": "TX", "mw": 1200.0, "investment": null, "status": "Under Construction", "statusCat": "construction", "cooling": "Liquid/hybrid roadmap", "coolCat": "closed-loop", "power": "Natural gas BTM", "isGas": true, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 1132061538.4615386, "hhEquiv": 2734, "lat": 29.7, "lng": -98.12}, {"name": "IREN Sweetwater 1", "owner": "IREN", "tenant": null, "location": "Nolan County", "state": "TX", "region": "TX", "mw": 1400.0, "investment": null, "status": "Planned", "statusCat": "planned", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid + BTM", "isGas": true, "stressScore": 4.0, "stressLabel": "High", "totalWater": 10731000000.0, "hhEquiv": 25920, "lat": 32.3, "lng": -100.42}, {"name": "PowerHouse Grand Prairie", "owner": "PowerHouse Data Centers", "tenant": null, "location": "Grand Prairie, Ellis County", "state": "TX", "region": "TX", "mw": 1300.0, "investment": null, "status": "Planned", "statusCat": "planned", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 7971600000.000001, "hhEquiv": 19255, "lat": 32.53, "lng": -96.99}, {"name": "Hut 8 Vega Campus", "owner": "Hut 8", "tenant": null, "location": "Oldham County", "state": "TX", "region": "TX", "mw": 205.0, "investment": null, "status": "Operational", "statusCat": "operational", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 1571324999.9999998, "hhEquiv": 3795, "lat": 35.4, "lng": -102.6}, {"name": "Black Pearl", "owner": "Cipher Mining", "tenant": null, "location": "Winkler County", "state": "TX", "region": "TX", "mw": 300.0, "investment": null, "status": "Operational", "statusCat": "operational", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 5.0, "stressLabel": "Extremely High", "totalWater": 2759400000.0, "hhEquiv": 6665, "lat": 31.79, "lng": -103.1}, {"name": "Soluna South TX", "owner": "Soluna Holdings", "tenant": null, "location": "Willacy County", "state": "TX", "region": "TX", "mw": 166.0, "investment": null, "status": "Operational Ph 1", "statusCat": "operational", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "100% wind", "isGas": false, "stressScore": 3.0, "stressLabel": "Medium-High", "totalWater": 1017912000.0, "hhEquiv": 2458, "lat": 26.47, "lng": -97.59}, {"name": "Stargate Abilene Campus", "owner": "OpenAI/Oracle/SoftBank", "tenant": null, "location": "Abilene, Taylor County", "state": "TX", "region": "TX", "mw": 4500.0, "investment": 100.0, "status": "Under Construction", "statusCat": "construction", "cooling": "Closed-loop", "coolCat": "closed-loop", "power": "Gas/renewable mix", "isGas": true, "stressScore": 4.0, "stressLabel": "High", "totalWater": 6367846153.846154, "hhEquiv": 15381, "lat": 32.45, "lng": -99.73}, {"name": "AVAIO Caroline", "owner": "AVAIO", "tenant": null, "location": "Carmel Church, Caroline County", "state": "VA", "region": "VA", "mw": 300.0, "investment": null, "status": "Under Construction", "statusCat": "construction", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 2.0, "stressLabel": "Low-Medium", "totalWater": 1379700000.0, "hhEquiv": 3332, "lat": 38.0, "lng": -77.36}, {"name": "Chirisa/AREP Chesterfield", "owner": "Chirisa/AREP", "tenant": null, "location": "Chesterfield County", "state": "VA", "region": "VA", "mw": 200.0, "investment": null, "status": "Planned", "statusCat": "planned", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 2.0, "stressLabel": "Low-Medium", "totalWater": 919800000.0000001, "hhEquiv": 2221, "lat": 37.38, "lng": -77.58}, {"name": "QTS Henrico", "owner": "QTS", "tenant": null, "location": "Henrico County", "state": "VA", "region": "VA", "mw": 240.0, "investment": null, "status": "Operational/Expanding", "statusCat": "operational", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 2.0, "stressLabel": "Low-Medium", "totalWater": 1103760000.0, "hhEquiv": 2666, "lat": 37.55, "lng": -77.35}, {"name": "EdgeCore Shannon Hill", "owner": "EdgeCore", "tenant": null, "location": "Louisa County", "state": "VA", "region": "VA", "mw": 1100.0, "investment": null, "status": "Planned", "statusCat": "planned", "cooling": "Closed-loop air-cooled", "coolCat": "closed-loop", "power": "Grid/SMR planned", "isGas": false, "stressScore": 1.0, "stressLabel": "Low", "totalWater": 1037723076.9230769, "hhEquiv": 2506, "lat": 37.95, "lng": -78.0}, {"name": "AWS North Creek", "owner": "Amazon/AWS", "tenant": null, "location": "Louisa County", "state": "VA", "region": "VA", "mw": 2700.0, "investment": null, "status": "Planned", "statusCat": "planned", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid/nuclear", "isGas": false, "stressScore": 1.0, "stressLabel": "Low", "totalWater": 12417300000.0, "hhEquiv": 29993, "lat": 37.95, "lng": -78.0}, {"name": "AWS Birchwood", "owner": "Amazon/AWS", "tenant": null, "location": "King George County", "state": "VA", "region": "VA", "mw": 2175.0, "investment": null, "status": "Planned", "statusCat": "planned", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 2.0, "stressLabel": "Low-Medium", "totalWater": 10002825000.0, "hhEquiv": 24161, "lat": 38.27, "lng": -77.16}, {"name": "AWS Wilderness Crossing", "owner": "Amazon/AWS", "tenant": null, "location": "Orange County", "state": "VA", "region": "VA", "mw": 1500.0, "investment": null, "status": "Planned", "statusCat": "planned", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 2.0, "stressLabel": "Low-Medium", "totalWater": 6898499999.999999, "hhEquiv": 16663, "lat": 38.25, "lng": -78.11}, {"name": "Meta Henrico", "owner": "Meta", "tenant": null, "location": "Henrico County", "state": "VA", "region": "VA", "mw": 500.0, "investment": null, "status": "Operational/Expanding", "statusCat": "operational", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 2.0, "stressLabel": "Low-Medium", "totalWater": 2299500000.0, "hhEquiv": 5554, "lat": 37.55, "lng": -77.35}, {"name": "Hassayampa Ranch", "owner": "Arizona Land Consulting", "tenant": null, "location": "Tonopah, Maricopa County", "state": "AZ", "region": "AZ", "mw": 1500.0, "investment": 25.0, "status": "Approved", "statusCat": "planned", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid + BTM gas", "isGas": true, "stressScore": 5.0, "stressLabel": "Extremely High", "totalWater": 13796999999.999998, "hhEquiv": 33326, "lat": 33.45, "lng": -112.96}, {"name": "QTS Phoenix 3", "owner": "QTS", "tenant": null, "location": "Maricopa County", "state": "AZ", "region": "AZ", "mw": 750.0, "investment": null, "status": "Planned", "statusCat": "planned", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 5748749999.999999, "hhEquiv": 13885, "lat": 33.35, "lng": -112.49}, {"name": "Davis-Monthan AFB DC", "owner": "U.S. Government", "tenant": null, "location": "Tucson, Pima County", "state": "AZ", "region": "AZ", "mw": 500.0, "investment": null, "status": "Planned", "statusCat": "planned", "cooling": "Air-cooled likely", "coolCat": "closed-loop", "power": "Grid/renewable", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 707538461.5384613, "hhEquiv": 1709, "lat": 32.22, "lng": -110.97}, {"name": "Southwest Crossing", "owner": "Ryan Companies", "tenant": null, "location": "Stanfield, Pinal County", "state": "AZ", "region": "AZ", "mw": 400.0, "investment": null, "status": "Approved", "statusCat": "planned", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Grid", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 3066000000.0000005, "hhEquiv": 7405, "lat": 32.88, "lng": -111.96}, {"name": "Energy Gen & Tech", "owner": "W Holdings", "tenant": null, "location": "Maricopa, Pinal County", "state": "AZ", "region": "AZ", "mw": 500.0, "investment": 10.0, "status": "Approved", "statusCat": "planned", "cooling": "Standard evaporative", "coolCat": "evaporative", "power": "Gas + BESS", "isGas": true, "stressScore": 4.0, "stressLabel": "High", "totalWater": 3832500000.0, "hhEquiv": 9257, "lat": 32.96, "lng": -112.05}, {"name": "Luckett Road N/S", "owner": "Beale Infrastructure", "tenant": null, "location": "Marana, Pima County", "state": "AZ", "region": "AZ", "mw": 650.0, "investment": null, "status": "Approved", "statusCat": "planned", "cooling": "Air-cooled redesign", "coolCat": "closed-loop", "power": "Grid", "isGas": false, "stressScore": 4.0, "stressLabel": "High", "totalWater": 919800000.0, "hhEquiv": 2221, "lat": 32.44, "lng": -111.22}];
+
+const stressColors = {
+  0: '#555', 1: '#2a9d8f', 2: '#8ab17d', 3: '#e9c46a', 4: '#f4a261', 5: '#e76f51'
+};
+function getColor(score) { return stressColors[Math.round(score)] || '#555'; }
+function getRadius(mw) { return mw ? Math.max(5, Math.min(35, Math.sqrt(mw / 50) * 2.2)) : 5; }
+
+// ============================================================
+// WATER STRESS ZONES - Simplified from WRI Aqueduct 4.0
+// These are approximate regional polygons based on the Aqueduct
+// baseline water stress dataset. Not county-level precision.
+// ============================================================
+const stressZones = {
+
+  // EXTREME STRESS (5/5) - Arid regions with severe depletion
+  extreme: [
+    // West Texas / Permian Basin / Trans-Pecos
+    { name: 'West Texas / Permian Basin',
+      coords: [[32.8,-104.8],[33.5,-104.0],[33.9,-103.0],[34.0,-101.5],[33.2,-100.5],[32.0,-100.0],[31.0,-100.2],[29.8,-101.0],[29.5,-102.5],[29.3,-103.5],[29.5,-104.2],[30.4,-105.0],[31.4,-106.0],[32.0,-106.6],[32.5,-106.2],[32.8,-104.8]] },
+    // Central Arizona - Phoenix metro / Pinal County / Maricopa
+    { name: 'Central Arizona',
+      coords: [[34.2,-113.0],[34.5,-112.0],[34.2,-111.0],[33.8,-110.8],[33.0,-110.8],[32.5,-111.2],[32.0,-111.8],[31.8,-112.5],[32.0,-113.2],[32.8,-113.5],[33.5,-113.2],[34.2,-113.0]] },
+    // Southern California - Imperial / Coachella / Inland Empire
+    { name: 'Southern California',
+      coords: [[34.5,-118.5],[34.8,-117.5],[34.8,-116.5],[34.2,-115.5],[33.5,-115.5],[32.7,-115.5],[32.5,-116.0],[32.7,-117.0],[33.2,-117.5],[33.8,-118.0],[34.5,-118.5]] },
+    // Southern New Mexico
+    { name: 'Southern New Mexico',
+      coords: [[33.5,-108.5],[34.0,-107.5],[33.8,-106.5],[33.0,-106.0],[32.0,-106.5],[31.8,-107.5],[32.0,-108.5],[32.5,-109.0],[33.5,-108.5]] },
+    // San Joaquin Valley (CA Central Valley south)
+    { name: 'San Joaquin Valley',
+      coords: [[37.5,-121.5],[37.8,-120.8],[37.2,-119.8],[36.0,-119.5],[35.0,-119.2],[34.8,-119.5],[35.2,-120.5],[36.0,-121.0],[37.0,-121.5],[37.5,-121.5]] },
+  ],
+  
+  // HIGH STRESS (4/5) - Significant water competition
+  high: [
+    // Texas west of I-35 corridor (broader)
+    { name: 'Central-West Texas',
+      coords: [[34.5,-103.0],[34.5,-100.5],[33.5,-99.0],[32.5,-98.0],[31.5,-97.5],[30.5,-97.5],[29.5,-98.5],[28.5,-99.5],[27.8,-99.5],[28.5,-100.5],[29.0,-100.5],[29.5,-101.0],[30.0,-100.0],[31.0,-100.0],[32.0,-100.0],[33.2,-100.5],[34.0,-101.5],[34.5,-103.0]] },
+    // Northern Arizona / Navajo + Flagstaff corridor
+    { name: 'Northern Arizona',
+      coords: [[37.0,-114.0],[37.0,-110.5],[36.0,-109.5],[35.0,-109.5],[34.5,-110.5],[34.2,-111.0],[34.5,-112.0],[34.2,-113.0],[34.5,-113.5],[35.5,-114.5],[37.0,-114.0]] },
+    // Colorado Front Range / Arkansas River
+    { name: 'Eastern Colorado',
+      coords: [[41.0,-105.0],[41.0,-102.0],[39.5,-102.0],[38.0,-102.0],[37.0,-102.0],[37.0,-103.5],[37.5,-104.5],[38.5,-105.2],[39.5,-105.5],[41.0,-105.0]] },
+    // Oklahoma panhandle + western OK
+    { name: 'Western Oklahoma',
+      coords: [[37.0,-103.0],[37.0,-100.0],[36.5,-99.0],[35.5,-99.0],[35.0,-99.5],[34.5,-99.5],[34.5,-100.0],[36.5,-103.0],[37.0,-103.0]] },
+    // Western Kansas
+    { name: 'Western Kansas',
+      coords: [[40.0,-102.0],[40.0,-99.5],[39.0,-99.0],[38.0,-99.0],[37.0,-100.0],[37.0,-102.0],[38.0,-102.0],[40.0,-102.0]] },
+    // Nevada (most of state)
+    { name: 'Nevada',
+      coords: [[42.0,-120.0],[42.0,-117.0],[41.0,-115.0],[39.0,-114.8],[37.0,-114.8],[36.0,-115.0],[35.0,-114.7],[35.0,-115.5],[36.0,-117.0],[37.5,-118.0],[39.0,-119.5],[40.0,-119.8],[42.0,-120.0]] },
+    // Utah - western half
+    { name: 'Western Utah',
+      coords: [[42.0,-114.0],[42.0,-112.0],[41.0,-111.5],[40.0,-111.5],[39.0,-111.5],[38.0,-112.0],[37.0,-113.5],[37.0,-114.0],[38.0,-114.0],[42.0,-114.0]] },
+    // North Texas / Dallas-Fort Worth fringe
+    { name: 'North-Central Texas',
+      coords: [[34.0,-99.0],[34.0,-97.0],[33.5,-96.5],[33.0,-96.5],[32.5,-97.0],[32.0,-97.5],[31.5,-97.5],[32.5,-98.0],[33.5,-99.0],[34.0,-99.0]] },
+  ],
+
+  // MEDIUM-HIGH STRESS (3/5)
+  medHigh: [
+    // Central Texas / Hill Country / Austin-San Antonio corridor
+    { name: 'Central Texas',
+      coords: [[31.5,-97.5],[30.5,-97.5],[30.0,-97.0],[29.5,-98.0],[29.0,-98.5],[28.5,-98.0],[27.5,-97.5],[27.5,-98.5],[28.5,-99.5],[29.5,-98.5],[30.5,-97.5],[31.5,-97.5]] },
+    // Eastern Oregon / Washington dryland
+    { name: 'Eastern Oregon / Washington',
+      coords: [[48.0,-120.0],[48.0,-117.5],[47.0,-117.0],[46.0,-117.0],[44.5,-117.0],[43.5,-117.5],[42.0,-118.5],[42.0,-120.5],[43.5,-121.0],[45.0,-121.0],[47.0,-120.5],[48.0,-120.0]] },
+    // Nebraska / South Dakota - Ogallala fringe
+    { name: 'Central Great Plains',
+      coords: [[43.0,-103.0],[43.0,-100.0],[42.0,-99.0],[41.0,-99.0],[40.0,-99.5],[40.0,-101.5],[40.5,-102.5],[42.0,-103.0],[43.0,-103.0]] },
+    // Southern Plains - Texas panhandle connection
+    { name: 'Texas Panhandle',
+      coords: [[36.5,-103.0],[36.5,-100.0],[35.5,-100.0],[35.0,-100.5],[34.5,-101.5],[34.5,-103.0],[36.5,-103.0]] },
+  ],
+
+  // LOW STRESS (1-2/5) - regions around our Virginia data centers
+  low: [
+    // Virginia / Mid-Atlantic
+    { name: 'Virginia / Mid-Atlantic',
+      coords: [[40.0,-80.5],[40.0,-76.0],[39.0,-75.5],[38.0,-75.5],[37.0,-76.0],[36.5,-76.0],[36.5,-80.5],[37.5,-81.5],[38.5,-81.0],[39.5,-80.5],[40.0,-80.5]] },
+    // Great Lakes / Ohio
+    { name: 'Great Lakes Region',
+      coords: [[46.0,-90.0],[46.0,-82.0],[44.0,-81.0],[42.0,-81.0],[41.0,-82.5],[41.0,-87.5],[42.5,-88.0],[44.0,-88.5],[46.0,-90.0]] },
+    // Pacific Northwest coast
+    { name: 'Pacific Northwest',
+      coords: [[48.5,-124.5],[48.5,-122.0],[47.0,-121.5],[45.5,-121.5],[43.5,-123.0],[42.0,-124.5],[43.0,-124.5],[45.5,-124.0],[48.5,-124.5]] },
+  ]
+};
+
+// === MAP ===
+const map = L.map('map', {
+  center: [35, -97], zoom: 5,
+  zoomControl: false, attributionControl: false
+});
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// Dark basemap
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+  maxZoom: 12, opacity: 0.85
+}).addTo(map);
+
+// === STRESS ZONE PANE (below markers, above basemap) ===
+map.createPane('stressPane');
+map.getPane('stressPane').style.zIndex = 300;
+map.getPane('stressPane').className += ' leaflet-stressPane-pane';
+
+// Render stress zones
+const stressLayerGroup = L.layerGroup();
+
+const zoneStyles = {
+  extreme: { fillColor: '#e76f51', fillOpacity: 0.35, color: '#e76f51', weight: 1.5, opacity: 0.4 },
+  high:    { fillColor: '#f4a261', fillOpacity: 0.28, color: '#f4a261', weight: 1.2, opacity: 0.35 },
+  medHigh: { fillColor: '#e9c46a', fillOpacity: 0.18, color: '#e9c46a', weight: 1.0, opacity: 0.3 },
+  low:     { fillColor: '#2a9d8f', fillOpacity: 0.14, color: '#2a9d8f', weight: 0.8, opacity: 0.25 }
+};
+
+// Chaikin curve smoothing: turns angular polygons into smooth organic shapes
+function chaikinSmooth(coords, iterations) {
+  for (let iter = 0; iter < iterations; iter++) {
+    const newCoords = [];
+    for (let i = 0; i < coords.length - 1; i++) {
+      const p0 = coords[i];
+      const p1 = coords[i + 1];
+      newCoords.push([
+        p0[0] * 0.75 + p1[0] * 0.25,
+        p0[1] * 0.75 + p1[1] * 0.25
+      ]);
+      newCoords.push([
+        p0[0] * 0.25 + p1[0] * 0.75,
+        p0[1] * 0.25 + p1[1] * 0.75
+      ]);
+    }
+    // Close the loop
+    const last = coords[coords.length - 1];
+    const first = coords[0];
+    newCoords.push([
+      last[0] * 0.75 + first[0] * 0.25,
+      last[1] * 0.75 + first[1] * 0.25
+    ]);
+    newCoords.push([
+      last[0] * 0.25 + first[0] * 0.75,
+      last[1] * 0.25 + first[1] * 0.75
+    ]);
+    coords = newCoords;
+  }
+  return coords;
+}
+
+Object.keys(stressZones).forEach(level => {
+  const style = zoneStyles[level];
+  stressZones[level].forEach(zone => {
+    // Smooth the polygon with 3 iterations of Chaikin
+    const smoothed = chaikinSmooth(zone.coords, 3);
+    const polygon = L.polygon(
+      smoothed.map(c => [c[0], c[1]]),
+      { ...style, pane: 'stressPane', interactive: false, smoothFactor: 1 }
+    );
+    stressLayerGroup.addLayer(polygon);
+  });
+});
+
+stressLayerGroup.addTo(map);
+
+// Hydro layer
+const hydroLayer = L.tileLayer(
+  'https://tiles.arcgis.com/tiles/P3ePLMYs2RVChkJx/arcgis/rest/services/Esri_Hydro_Reference_Overlay/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 12, opacity: 0.55, className: 'hydro-tiles' }
+);
+hydroLayer.addTo(map);
+
+// Labels on top
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+  maxZoom: 12, opacity: 0.5
+}).addTo(map);
+
+// === STATE BORDERS ===
+const stateBorders = {
+  TX: [[36.5,-103.04],[36.5,-100.0],[34.56,-100.0],[34.31,-99.39],[34.08,-99.20],[33.96,-98.77],[33.84,-98.38],[33.63,-97.97],[33.87,-97.37],[33.72,-97.09],[33.83,-96.52],[33.69,-96.37],[33.85,-96.09],[33.73,-95.55],[33.36,-94.73],[33.02,-94.04],[31.99,-94.04],[31.17,-93.83],[30.39,-93.76],[30.05,-93.73],[29.78,-93.89],[29.57,-93.84],[29.37,-94.62],[29.08,-94.83],[28.65,-95.84],[28.16,-96.60],[27.68,-97.14],[27.28,-97.38],[26.40,-97.18],[25.97,-97.15],[25.96,-97.37],[26.06,-97.81],[26.35,-98.28],[26.78,-99.10],[27.78,-99.89],[28.62,-100.56],[29.07,-100.70],[29.63,-101.41],[29.75,-101.74],[29.79,-102.34],[29.27,-102.84],[29.02,-103.17],[28.96,-103.38],[29.29,-103.81],[29.47,-104.15],[29.57,-104.21],[30.35,-104.87],[30.63,-105.01],[31.11,-105.78],[31.36,-106.00],[31.78,-106.38],[32.0,-106.62],[32.0,-103.04],[36.5,-103.04]],
+  AZ: [[37.0,-109.05],[36.99,-114.05],[36.14,-114.04],[36.02,-114.72],[35.18,-114.57],[35.0,-114.63],[34.87,-114.47],[34.51,-114.38],[34.29,-114.13],[33.92,-114.41],[33.55,-114.53],[33.38,-114.73],[33.09,-114.68],[32.84,-114.81],[32.72,-114.72],[32.51,-114.81],[31.33,-114.81],[31.33,-111.07],[31.33,-109.05],[32.49,-109.05],[34.0,-109.05],[36.0,-109.05],[37.0,-109.05]],
+  VA: [[39.72,-75.79],[38.46,-76.24],[38.02,-76.33],[37.95,-76.26],[37.56,-76.33],[37.11,-76.45],[36.97,-76.16],[36.55,-76.03],[36.55,-79.07],[36.55,-80.84],[36.55,-81.68],[36.60,-81.93],[36.59,-83.68],[36.73,-83.13],[37.36,-81.68],[37.51,-81.97],[37.52,-82.13],[37.78,-82.03],[38.17,-81.83],[38.40,-81.56],[38.61,-81.32],[38.84,-81.13],[39.10,-81.44],[39.17,-81.39],[39.27,-81.24],[39.39,-80.85],[39.45,-80.56],[39.59,-80.49],[39.72,-79.48],[39.72,-78.77],[39.72,-77.72],[39.32,-77.57],[39.13,-77.24],[38.92,-77.04],[38.79,-77.04],[38.56,-77.31],[38.31,-77.05],[38.37,-76.53],[38.18,-76.24],[38.32,-76.01],[38.46,-76.24],[39.72,-75.79]]
+};
+const stateAccentColors = { TX: '#e76f51', AZ: '#e9c46a', VA: '#2a9d8f' };
+
+let activeStateBorders = [];
+function showStateBorder(stateKey) {
+  activeStateBorders.forEach(l => map.removeLayer(l));
+  activeStateBorders = [];
+  if (stateKey && stateBorders[stateKey]) {
+    const layer = L.polyline(stateBorders[stateKey], {
+      color: stateAccentColors[stateKey], weight: 1.5, opacity: 0.5, dashArray: '6 4', interactive: false
+    }).addTo(map);
+    activeStateBorders.push(layer);
+  }
+}
+
+// === VIEW MODE ===
+let viewMode = 'both';
+const btnRivers = document.getElementById('viewRivers');
+const btnStress = document.getElementById('viewStress');
+const btnBoth = document.getElementById('viewBoth');
+
+function setViewMode(mode) {
+  viewMode = mode;
+  [btnRivers, btnStress, btnBoth].forEach(b => { b.className = 'view-btn'; });
+  
+  if (mode === 'rivers') {
+    btnRivers.classList.add('active-rivers');
+    hydroLayer.setOpacity(0.7);
+    if (!map.hasLayer(hydroLayer)) hydroLayer.addTo(map);
+    if (map.hasLayer(stressLayerGroup)) map.removeLayer(stressLayerGroup);
+  } else if (mode === 'stress') {
+    btnStress.classList.add('active-stress');
+    if (map.hasLayer(hydroLayer)) map.removeLayer(hydroLayer);
+    if (!map.hasLayer(stressLayerGroup)) stressLayerGroup.addTo(map);
+  } else {
+    btnBoth.classList.add('active-both');
+    hydroLayer.setOpacity(0.45);
+    if (!map.hasLayer(hydroLayer)) hydroLayer.addTo(map);
+    if (!map.hasLayer(stressLayerGroup)) stressLayerGroup.addTo(map);
+  }
+}
+
+btnRivers.addEventListener('click', () => setViewMode('rivers'));
+btnStress.addEventListener('click', () => setViewMode('stress'));
+btnBoth.addEventListener('click', () => setViewMode('both'));
+setViewMode('both');
+
+// === MARKERS ===
+let markers = [];
+let currentFilter = 'all';
+
+function getFilteredProjects() {
+  if (currentFilter === 'TX') return projects.filter(p => p.region === 'TX');
+  if (currentFilter === 'AZ') return projects.filter(p => p.region === 'AZ');
+  if (currentFilter === 'VA') return projects.filter(p => p.region === 'VA');
+  if (currentFilter === 'other') return projects.filter(p => p.region === 'US Other');
+  if (currentFilter === 'gas') return projects.filter(p => p.isGas);
+  if (currentFilter === 'stress4') return projects.filter(p => p.stressScore >= 4);
+  if (currentFilter === 'stress5') return projects.filter(p => p.stressScore >= 5);
+  return projects;
+}
+
+function createPopup(p) {
+  const stressClass = p.stressScore >= 5 ? 'stress-extreme' : p.stressScore >= 4 ? 'stress-high' : '';
+  const gasNote = p.isGas ? `<div class="popup-field-label">Power Source</div><div class="popup-field-value gas">${p.power}</div>` : '';
+  const investNote = p.investment ? `<div class="popup-field-label">Investment</div><div class="popup-field-value">${p.investment}B</div>` : '';
+  let waterSection = '';
+  if (p.hhEquiv > 0) {
+    waterSection = `<div class="popup-water"><div class="popup-field-label">Est. Annual Water Consumption</div><div class="popup-water-value">${p.hhEquiv.toLocaleString()} US households equiv.</div><div style="margin-top:3px; font-size:9px; color:#888;">${(p.totalWater / 1e9).toFixed(1)}B litres/year</div></div>`;
+  }
+  return `<div class="popup-name">${p.name}</div><div class="popup-owner">${p.owner}${p.tenant && p.tenant !== p.owner && p.tenant !== 'None' ? ' / ' + p.tenant : ''}</div><div class="popup-grid"><div><div class="popup-field-label">Capacity</div><div class="popup-field-value">${p.mw >= 1000 ? (p.mw/1000).toFixed(1) + ' GW' : p.mw.toLocaleString() + ' MW'}</div></div><div><div class="popup-field-label">Water Stress</div><div class="popup-field-value ${stressClass}">${p.stressLabel} (${p.stressScore}/5)</div></div><div><div class="popup-field-label">Cooling</div><div class="popup-field-value">${p.cooling}</div></div><div><div class="popup-field-label">Status</div><div class="popup-field-value">${p.status}</div></div>${gasNote}${investNote}</div><div style="font-size:9px; color:#666;">${p.location}, ${p.state}</div>${waterSection}`;
+}
+
+function renderMarkers(filter) {
+  currentFilter = filter;
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  const filtered = getFilteredProjects();
+  filtered.sort((a, b) => (b.mw || 0) - (a.mw || 0));
+
+  filtered.forEach(p => {
+    const radius = getRadius(p.mw);
+    const color = getColor(p.stressScore);
+    let weight = 1.5, dashArray = null, borderColor = 'rgba(0,0,0,0.4)';
+    if (p.statusCat === 'blocked') { borderColor = '#ff6b6b'; weight = 2.5; dashArray = '4 3'; }
+    else if (p.isGas) { borderColor = '#e9c46a'; weight = 2; }
+
+    const marker = L.circleMarker([p.lat, p.lng], {
+      radius, fillColor: color, fillOpacity: 0.85, color: borderColor, weight, dashArray
+    }).addTo(map);
+    marker.bindPopup(createPopup(p), { maxWidth: 300 });
+    marker.on('mouseover', function() { this.setStyle({ fillOpacity: 1, weight: weight + 1 }); });
+    marker.on('mouseout', function() { this.setStyle({ fillOpacity: 0.85, weight }); });
+    markers.push(marker);
+  });
+
+  if (['TX', 'AZ', 'VA'].includes(filter)) showStateBorder(filter);
+  else showStateBorder(null);
+  updateStats(filtered);
+}
+
+function updateStats(filtered) {
+  const totalMw = filtered.reduce((s, p) => s + (p.mw || 0), 0);
+  const highStressMw = filtered.reduce((s, p) => s + (p.stressScore >= 4 ? (p.mw || 0) : 0), 0);
+  const gasMw = filtered.reduce((s, p) => s + (p.isGas ? (p.mw || 0) : 0), 0);
+  const inv = filtered.reduce((s, p) => s + (p.investment || 0), 0);
+  const stats = document.querySelectorAll('.stat-value');
+  stats[0].textContent = filtered.length;
+  stats[1].textContent = (totalMw / 1000).toFixed(0) + ' GW';
+  stats[2].textContent = totalMw > 0 ? Math.round(highStressMw / totalMw * 100) + '%' : '0%';
+  stats[3].textContent = (gasMw / 1000).toFixed(0) + ' GW';
+  stats[4].textContent = '$' + Math.round(inv) + 'B';
+  stats[5].textContent = Math.round(totalMw / 1200);
+}
+
+// === STATE PANEL ===
+function buildStatePanel() {
+  const regionMap = {};
+  projects.forEach(p => {
+    if (!regionMap[p.region]) regionMap[p.region] = { projects: 0, mw: 0 };
+    regionMap[p.region].projects++;
+    regionMap[p.region].mw += p.mw || 0;
+  });
+  const labels = { TX: 'Texas', AZ: 'Arizona', VA: 'Virginia', 'US Other': 'Other US' };
+  const colors = { TX: '#e76f51', AZ: '#e9c46a', VA: '#2a9d8f', 'US Other': '#888' };
+  const container = document.getElementById('stateRows');
+  ['TX', 'AZ', 'VA', 'US Other'].forEach(key => {
+    const d = regionMap[key]; if (!d) return;
+    const row = document.createElement('div');
+    row.className = 'state-row';
+    row.innerHTML = `<span class="state-name"><span style="color:${colors[key]}; margin-right:6px;">&#9646;</span>${labels[key]}</span><span class="state-mw">${d.projects}p / ${(d.mw/1000).toFixed(0)} GW</span>`;
+    row.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      const fk = key === 'US Other' ? 'other' : key;
+      document.querySelector(`[data-filter="${fk}"]`)?.classList.add('active');
+      renderMarkers(fk); zoomToFilter(fk);
+    });
+    container.appendChild(row);
+  });
+}
+
+function zoomToFilter(f) {
+  const v = { TX:[31.5,-99,6], AZ:[33.5,-111.5,7], VA:[38.5,-78,7], other:[37,-95,4], all:[35,-97,5], gas:[33,-98,5], stress4:[33,-103,5], stress5:[33,-108,6] }[f] || [35,-97,5];
+  map.flyTo([v[0],v[1]], v[2], { duration: 0.8 });
+}
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderMarkers(btn.dataset.filter); zoomToFilter(btn.dataset.filter);
+  });
+});
+
+function updateFilterCounts() {
+  const counts = {
+    all: projects.length, TX: projects.filter(p => p.region === 'TX').length,
+    AZ: projects.filter(p => p.region === 'AZ').length, VA: projects.filter(p => p.region === 'VA').length,
+    other: projects.filter(p => p.region === 'US Other').length, gas: projects.filter(p => p.isGas).length,
+    stress4: projects.filter(p => p.stressScore >= 4).length, stress5: projects.filter(p => p.stressScore >= 5).length
+  };
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    const f = btn.dataset.filter;
+    if (f && counts[f] !== undefined) btn.querySelector('.filter-count').textContent = ' (' + counts[f] + ')';
+  });
+}
+
+// State labels
+const labelLayer = L.layerGroup().addTo(map);
+function renderStateLabels(show) {
+  labelLayer.clearLayers();
+  if (!show) return;
+  [{ name:'TEXAS',sub:'20 projects / 45 GW',lat:31.2,lng:-99.5,color:'#e76f51'},
+   { name:'ARIZONA',sub:'17 projects / 12 GW',lat:33.8,lng:-112.5,color:'#e9c46a'},
+   { name:'VIRGINIA',sub:'16 projects / 25 GW',lat:38.8,lng:-78.5,color:'#2a9d8f'}
+  ].forEach(s => {
+    L.marker([s.lat,s.lng], { icon: L.divIcon({
+      className:'state-label-icon',
+      html:`<div class="state-map-label"><div class="state-map-name" style="color:${s.color};opacity:0.3;">${s.name}</div><div class="state-map-sub">${s.sub}</div></div>`,
+      iconSize:[160,40], iconAnchor:[80,20]
+    }), interactive:false }).addTo(labelLayer);
+  });
+}
+map.on('zoomend', () => renderStateLabels(map.getZoom() <= 6));
+
+// INIT
+buildStatePanel();
+updateFilterCounts();
+renderMarkers('all');
+renderStateLabels(true);
+</script>
+</body>
+</html>
